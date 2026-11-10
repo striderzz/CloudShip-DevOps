@@ -1,10 +1,10 @@
-# CLAUDE.md: Ironclad build guide
+# CLAUDE.md: Endurance build guide
 
 This file tells Claude (Claude Code) how to build this project. Read **README.md** first: it is the design spec. This file is the build plan.
 
 ## Goal
 
-Deploy the Sterling API to AWS with Terraform (VPC, ECS Fargate behind an ALB, RDS PostgreSQL, ECR, Secrets Manager) and to a local k3d Kubernetes cluster via Helm + Argo CD, with GitHub Actions CI/CD using OIDC, Trivy and Checkov gates, and Prometheus + Grafana monitoring.
+Deploy the Ironbank API to AWS with Terraform (VPC, ECS Fargate behind an ALB, RDS PostgreSQL, ECR, Secrets Manager) and to a local k3d Kubernetes cluster via Helm + Argo CD, with GitHub Actions CI/CD using OIDC, Trivy and Checkov gates, and Prometheus + Grafana monitoring.
 
 ## Tech stack
 
@@ -14,9 +14,9 @@ Terraform 1.x, AWS (VPC, ALB, ECS Fargate, RDS, ECR, S3 remote state, Secrets Ma
 
 1. Scaffold: repo layout, Terraform remote state (S3 + lock), pre-commit with `terraform fmt`/`validate`/`tflint`, CI.
 2. Provider layer `llm/`: Claude (anthropic SDK), OpenAI (openai SDK), custom OpenAI-compatible endpoint; `.env` + Settings page (or env vars / GitHub secrets where there is no UI) with masked keys and Test connection; per-call token/cost log; monthly budget cap; fake provider for tests.
-3. Terraform modules: network (VPC, subnets, NAT or VPC endpoints), RDS, ECR, ECS Fargate service + ALB; deploy Sterling.
+3. Terraform modules: network (VPC, subnets, NAT or VPC endpoints), RDS, ECR, ECS Fargate service + ALB; deploy Ironbank.
 4. GitHub Actions: OIDC role, build + push image, Trivy scan, Checkov scan, `terraform plan` on PR and `apply` on main with approval.
-5. Local k3d cluster: Helm chart for Sterling + Postgres; Argo CD syncing from `gitops/`.
+5. Local k3d cluster: Helm chart for Ironbank + Postgres; Argo CD syncing from `gitops/`.
 6. kube-prometheus-stack: Grafana dashboard (rate, errors, latency) and one alert rule.
 7. AI features: GitHub Action PR reviewer (terraform plan + Checkov + Trivy + Infracost -> structured risk report as one PR comment) and a Grafana alert explainer webhook posting to Slack/Discord; keys from GitHub secrets, provider/model from repository variables.
 8. Cost notes and `make destroy`; screenshots (AWS console, Argo CD, Grafana, CI); README results; demo GIF.

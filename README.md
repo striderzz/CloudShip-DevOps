@@ -1,4 +1,4 @@
-# Ironclad – AWS DevOps
+# Endurance – AWS DevOps
 
 **Deploying a real application to AWS the way a platform team would: infrastructure as code, Kubernetes with GitOps, monitoring, and security checks in CI**
 
@@ -10,7 +10,7 @@ Terraform · AWS (VPC, ECS Fargate, RDS, S3, ECR) · Docker · k3d + Helm · Arg
 
 ## Overview
 
-Ironclad takes the [Sterling](https://github.com/striderzz/sterling-payments-ledger) payments API and runs it two ways:
+Endurance takes the [Ironbank](https://github.com/striderzz/ironbank-payments-ledger) payments API and runs it two ways:
 
 1. **On AWS**, built entirely with Terraform: a VPC with public and private subnets, the API on ECS Fargate behind a load balancer, PostgreSQL on RDS, and images in ECR.
 2. **On Kubernetes**, locally with k3d (free): Helm charts deployed by Argo CD from Git, with Prometheus and Grafana monitoring.
@@ -31,12 +31,12 @@ flowchart LR
     GA -->|OIDC| ECR[(ECR)]
     GA -->|terraform apply| AWS
     subgraph AWS[AWS - Terraform]
-        ALB[Load balancer] --> ECS[ECS Fargate<br/>Sterling API]
+        ALB[Load balancer] --> ECS[ECS Fargate<br/>Ironbank API]
         ECS --> RDS[(RDS PostgreSQL)]
         ECS --> SM[Secrets Manager]
     end
     GA -->|update Helm values| GIT[(GitOps folder)]
-    GIT --> ARGO[Argo CD] --> K3D[k3d cluster<br/>Sterling + Prometheus + Grafana]
+    GIT --> ARGO[Argo CD] --> K3D[k3d cluster<br/>Ironbank + Prometheus + Grafana]
 ```
 
 ## Key features
@@ -86,11 +86,11 @@ Every AI feature goes through one small provider layer, so you can switch models
 ## Repository structure
 
 ```
-ironclad-aws-devops/
+endurance-aws-devops/
 ├── requirements.txt
 ├── .env.example
 ├── terraform/        # modules + environments
-├── helm/             # Sterling chart
+├── helm/             # Ironbank chart
 ├── gitops/           # Argo CD applications
 ├── monitoring/       # Prometheus rules, Grafana dashboards
 ├── docs/             # architecture, screenshots, cost notes
@@ -100,7 +100,7 @@ ironclad-aws-devops/
 ## Roadmap
 
 - [ ] Provider layer (Claude, OpenAI, custom) + budget cap
-- [ ] Terraform network + RDS + ECS Fargate deployment of Sterling
+- [ ] Terraform network + RDS + ECS Fargate deployment of Ironbank
 - [ ] GitHub Actions CI/CD with OIDC
 - [ ] Trivy and Checkov gates
 - [ ] k3d cluster with Helm chart and Argo CD
