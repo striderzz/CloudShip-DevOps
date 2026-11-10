@@ -4,50 +4,65 @@ This file tells Claude (Claude Code) how to build this project. Read **README.md
 
 ## Goal
 
-Deploy the Ironbank API to AWS with Terraform (VPC, ECS Fargate behind an ALB, RDS PostgreSQL, ECR, Secrets Manager) and to a local k3d Kubernetes cluster via Helm + Argo CD, with GitHub Actions CI/CD using OIDC, Trivy and Checkov gates, and Prometheus + Grafana monitoring.
+Deploy the Ironbank payments API (`striderzz/ironbank-payments-ledger`, pinned by commit SHA in `ironbank.ref`) to AWS with infrastructure as code and a secure pipeline:
+
+- Terraform modules with remote state (S3 + DynamoDB lock): VPC with public/private subnets, ALB, ECS Fargate service, RDS PostgreSQL, ECR, Secrets Manager, CloudWatch logs and alarms, least-privilege IAM
+- Environments dev and prod from one root module via `dev.tfvars` / `prod.tfvars` and separate state keys
+- GitHub Actions: lint/test, build image, Trivy image scan and Checkov IaC scan as blocking gates, push to ECR, deploy to ECS, authenticated with OIDC (no long-lived AWS keys); prod behind a manual approval
+- Monitoring: CloudWatch logs and alarms in AWS; Prometheus + Grafana dashboards locally via Docker Compose
+- Rollback by redeploying the previous ECS task definition revision (`make rollback`), plus the ECS deployment circuit breaker
+- Cost control: everything tears down with `make destroy`; `docs/cost.md` lists free-tier vs paid parts without invented dollar figures
 
 ## Tech stack
 
-Terraform 1.x, AWS (VPC, ALB, ECS Fargate, RDS, ECR, S3 remote state, Secrets Manager, IAM OIDC), Docker, k3d, Helm, Argo CD, kube-prometheus-stack (Prometheus + Grafana), Trivy, Checkov, GitHub Actions. LLM layer: anthropic and openai Python SDKs, python-dotenv, pydantic-settings.
+Terraform 1.x (+ tflint), AWS (VPC, ALB, ECS Fargate, RDS PostgreSQL, ECR, Secrets Manager, CloudWatch, SNS, IAM, S3 + DynamoDB for state), GitHub Actions with OIDC, Docker and Docker Compose, Trivy, Checkov, Prometheus, Grafana, Make and Bash.
 
 ## Build order (phases)
 
-1. Scaffold: repo layout, Terraform remote state (S3 + lock), pre-commit with `terraform fmt`/`validate`/`tflint`, CI.
-2. Provider layer `llm/`: Claude (anthropic SDK), OpenAI (openai SDK), custom OpenAI-compatible endpoint; `.env` + Settings page (or env vars / GitHub secrets where there is no UI) with masked keys and Test connection; per-call token/cost log; monthly budget cap; fake provider for tests.
-3. Terraform modules: network (VPC, subnets, NAT or VPC endpoints), RDS, ECR, ECS Fargate service + ALB; deploy Ironbank.
-4. GitHub Actions: OIDC role, build + push image, Trivy scan, Checkov scan, `terraform plan` on PR and `apply` on main with approval.
-5. Local k3d cluster: Helm chart for Ironbank + Postgres; Argo CD syncing from `gitops/`.
-6. kube-prometheus-stack: Grafana dashboard (rate, errors, latency) and one alert rule.
-7. AI features: GitHub Action PR reviewer (terraform plan + Checkov + Trivy + Infracost -> structured risk report as one PR comment) and a Grafana alert explainer webhook posting to Slack/Discord; keys from GitHub secrets, provider/model from repository variables.
-8. Cost notes and `make destroy`; screenshots (AWS console, Argo CD, Grafana, CI); README results; demo GIF.
+1. Scaffold: repo layout, Makefile (`up`, `down`, `test`, `scan`, `plan`, `apply`, `deploy`, `rollback`, `destroy`), `.env.example`, pre-commit with `terraform fmt`/`validate`/`tflint`, CI lint workflow, local `docker-compose.yml` running Ironbank + Postgres.
+2. Bootstrap and network: `terraform/bootstrap/` (versioned encrypted S3 state bucket, DynamoDB lock table, GitHub OIDC provider, CI plan and deploy roles); `network` module (VPC across two AZs, public/private subnets, NAT gateway, route tables, security groups).
+3. AWS runtime: `ecr`, `database` (RDS with managed master password in Secrets Manager), `iam` (execution role, task role), `service` (ECS cluster, task definition, service with circuit breaker, ALB, target group; `ignore_changes = [task_definition]`). First manual deploy to dev and smoke test.
+4. Pipeline: `ci.yml` (lint, Ironbank tests, build, Trivy, Checkov, `terraform plan` with the read-only role) and `deploy.yml` (gates, push SHA-tagged image to ECR, apply and deploy dev, smoke test, prod after approval). Concurrency group per environment.
+5. Monitoring: CloudWatch log group with retention, alarms (ALB 5xx, target response time, unhealthy hosts, ECS CPU/memory, RDS CPU/free storage) to an SNS email topic; Prometheus + Grafana in Docker Compose with a provisioned RED dashboard and one error-rate alert rule.
+6. Operations and results: `scripts/rollback.sh` + runbook, `make destroy` verified to leave nothing behind, `docs/cost.md`, measured results (lead time, pipeline duration, rollback time, findings blocked, cost estimate) in `docs/results/`, real screenshots (AWS console, CI run, Grafana).
+
+## Stretch goals
+
+Only after Phase 6 is done and measured:
+
+- Local k3d cluster, Helm chart for Ironbank, Argo CD syncing from a `gitops/` folder
+- Blue/green deploys on ECS with CodeDeploy
+- AI pull-request reviewer: GitHub Action sends `terraform plan` + Trivy/Checkov output to Claude (`claude-haiku-5-5`) and posts one structured risk comment (follow the LLM rules below)
+- Infracost cost diff on pull requests that change Terraform
 
 ## Working rules for Claude
 
-- Keep the scope at the level in README.md: this is a portfolio project for a master's graduate with about a year of experience. Do not add components the README does not list. The owner must be able to explain every line in an interview.
+- Keep the scope at the core level in README.md (stretch goals only after Phase 6): this is a portfolio project for a master's graduate with about a year of experience. Do not add components the README does not list. The owner must be able to explain every line in an interview.
 - Build **one phase at a time**, in order. Each phase must run end to end before the next starts.
 - After each phase, update the **Roadmap checklist in README.md** and commit with a clear message.
 - **Never invent results.** Every number in README.md (accuracy, latency, throughput, cost) must come from a run in this repo. Save the raw output in `docs/results/`.
 - **Screenshots:** when a phase produces something visible (UI, dashboard, Grafana, MLflow, test or load-test report), capture real screenshots into `docs/screenshots/` and embed them in README.md. Never mock them up.
 - Keep secrets out of git: `.env` (gitignored) plus a committed `.env.example`.
 - Never commit datasets or large model files. Write download scripts and gitignore the data folders.
-- Python 3.11+. Dependencies live in a pinned `requirements.txt` (runtime) and `requirements-dev.txt` (pytest, ruff). Setup is `pip install -r requirements.txt`. Use `ruff` for lint/format, type hints, and `pytest` for tests.
-- **LLM rules:**
+- Most code here is Terraform, YAML and Bash. Pin Terraform and provider versions, run `terraform fmt`, never hard-code account IDs or ARNs, and keep `make destroy` working after every phase. Any Python helper uses Python 3.11+. Dependencies live in a pinned `requirements.txt` (runtime) and `requirements-dev.txt` (pytest, ruff). Setup is `pip install -r requirements.txt`. Use `ruff` for lint/format, type hints, and `pytest` for tests.
+- **LLM rules (stretch AI reviewer only; the core uses no LLM):**
   - Every LLM call goes through the `llm/` provider layer: Claude through the official `anthropic` SDK; OpenAI through the official `openai` SDK; a "custom" provider through the `openai` SDK with a user-supplied `base_url`, API key and model name (for Gemini, Groq, DeepSeek, OpenRouter, Ollama and others).
-  - Keys come from `.env` (with a committed `.env.example`) or from the app's Settings page. Settings are saved to a gitignored `settings.local.json`, keys are masked in the UI and never logged, and the page has a "Test connection" button.
-  - Defaults are `claude-opus-5-5` for main reasoning steps and `claude-haiku-5-5` for bulk steps. Both are configurable per feature.
+  - Keys come from `.env` (with a committed `.env.example`) locally and from GitHub repository secrets in Actions; provider and model come from repository variables. Keys are never logged.
+  - The PR reviewer defaults to `claude-haiku-5-5`; `claude-opus-5-5` is available for hard reasoning steps. Both are configurable.
   - Log tokens and cost for every call, and enforce a monthly budget cap (`LLM_MONTHLY_BUDGET_USD`).
   - Check `stop_reason` (including `refusal`) before reading a response. Use structured outputs for JSON. Put stable prompts first and use prompt caching. Run offline evals with the Message Batches API.
   - Tests use a fake provider, so CI never spends money or needs keys.
-- `docker compose up` must bring up the demo locally.
+- `docker compose up` (via `make up`) must bring up the local demo: Ironbank, Postgres, Prometheus, Grafana.
+- Never run `terraform apply` against prod outside the approved pipeline, and run `make destroy ENV=dev` at the end of every AWS session.
 - Add a GitHub Actions workflow (lint + tests) in Phase 1 and keep it green.
 - Prefer small, readable modules. Add a short "How it works" note to `docs/` after each phase.
 
 ## Definition of done
 
-- One-command local demo (`docker compose up` or the documented command)
+- One-command local demo (`make up`) and one-command teardown of AWS (`make destroy`)
 - README has the architecture diagram, setup steps, real screenshots, a demo GIF and measured results
-- CI is green and tests cover the core logic
+- CI is green, Trivy and Checkov gates are enforced, and a rollback has been tested end to end
 
 ## Status
 
-Only `README.md` and this file exist so far. Start at **Phase 1**.
+Only `README.md`, `INFO.md` and this file exist so far. Start at **Phase 1**.
