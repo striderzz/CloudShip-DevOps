@@ -1,4 +1,4 @@
-# Ironclad
+# Ironclad – AWS DevOps
 
 **Deploying a real application to AWS the way a platform team would: infrastructure as code, Kubernetes with GitOps, monitoring, and security checks in CI**
 
@@ -10,7 +10,7 @@ Terraform · AWS (VPC, ECS Fargate, RDS, S3, ECR) · Docker · k3d + Helm · Arg
 
 ## Overview
 
-Ironclad takes the [Sterling](https://github.com/striderzz/Sterling) payments API and runs it two ways:
+Ironclad takes the [Sterling](https://github.com/striderzz/sterling-payments-ledger) payments API and runs it two ways:
 
 1. **On AWS**, built entirely with Terraform: a VPC with public and private subnets, the API on ECS Fargate behind a load balancer, PostgreSQL on RDS, and images in ECR.
 2. **On Kubernetes**, locally with k3d (free): Helm charts deployed by Argo CD from Git, with Prometheus and Grafana monitoring.
@@ -86,7 +86,7 @@ Every AI feature goes through one small provider layer, so you can switch models
 ## Repository structure
 
 ```
-Ironclad/
+ironclad-aws-devops/
 ├── requirements.txt
 ├── .env.example
 ├── terraform/        # modules + environments
