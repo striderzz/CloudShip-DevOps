@@ -1,6 +1,6 @@
-# Endurance – AWS DevOps
+# CloudShip DevOps
 
-Deploys the Ironbank payments API to AWS with Terraform and a GitHub Actions pipeline that scans every image and every infrastructure change before it ships.
+Deploys the IronPay payments API to AWS with Terraform and a GitHub Actions pipeline that scans every image and every infrastructure change before it ships.
 
 Status: in development — design spec and build plan; results land as each phase ships.
 
@@ -10,7 +10,7 @@ Status: in development — design spec and build plan; results land as each phas
 
 ## Why this exists
 
-Most portfolio deployments stop at "it runs on my laptop" or a console-clicked EC2 instance with an access key pasted into CI. That skips the parts a platform team actually owns: a network that keeps the database off the internet, infrastructure that can be rebuilt from code, a pipeline that refuses to ship a vulnerable image, credentials that expire on their own, alarms that fire before users notice, a rollback that takes one command, and a bill that goes to zero when the demo is over. Endurance takes a real service, the [Ironbank payments API](https://github.com/striderzz/ironbank-payments-ledger), and deploys it that way.
+Most portfolio deployments stop at "it runs on my laptop" or a console-clicked EC2 instance with an access key pasted into CI. That skips the parts a platform team actually owns: a network that keeps the database off the internet, infrastructure that can be rebuilt from code, a pipeline that refuses to ship a vulnerable image, credentials that expire on their own, alarms that fire before users notice, a rollback that takes one command, and a bill that goes to zero when the demo is over. CloudShip takes a real service, the [IronPay payments API](https://github.com/striderzz/ironpay-ledgerapi), and deploys it that way.
 
 ## What it does
 
@@ -28,7 +28,7 @@ Most portfolio deployments stop at "it runs on my laptop" or a console-clicked E
 ```mermaid
 flowchart LR
     DEV["Developer: push or PR"] --> GHA["GitHub Actions"]
-    IBREPO["Ironbank repo at pinned SHA"] --> GHA
+    IBREPO["IronPay repo at pinned SHA"] --> GHA
     GHA --> GATES["Gates: tests, Trivy, Checkov"]
     GATES -->|pass| STS["AWS STS via OIDC"]
     STS --> ECR["ECR"]
@@ -42,7 +42,7 @@ flowchart LR
             NAT["NAT gateway"]
         end
         subgraph PRIV["Private subnets"]
-            ECS["ECS Fargate: Ironbank API"]
+            ECS["ECS Fargate: IronPay API"]
             RDS["RDS PostgreSQL"]
         end
     end
@@ -56,13 +56,13 @@ flowchart LR
     CW --> SNS["SNS email alert"]
 
     subgraph LOCAL["Local: Docker Compose"]
-        LAPI["Ironbank + Postgres"]
+        LAPI["IronPay + Postgres"]
         PROM["Prometheus"] -->|scrapes| LAPI
         GRAF["Grafana"] --> PROM
     end
 ```
 
-A push or pull request starts GitHub Actions, which checks out Ironbank at the commit pinned in `ironbank.ref`, runs its tests, builds the image and runs Trivy on it, and runs Checkov on the Terraform. Only if every gate passes does the job exchange its GitHub OIDC token for short-lived AWS credentials. On `main`, it pushes the image to ECR, applies Terraform for the target environment, registers a new ECS task definition that points at the new image, and waits for the service to become stable behind the ALB. Inside AWS, only the ALB sits in public subnets; the Fargate tasks and the RDS database live in private subnets, the tasks read the database password from Secrets Manager at start-up, and logs and metrics go to CloudWatch, where alarms notify an SNS email topic. Locally, the same API runs under Docker Compose next to Prometheus and Grafana, so dashboards and alert rules can be built without paying for AWS.
+A push or pull request starts GitHub Actions, which checks out IronPay at the commit pinned in `ironpay.ref`, runs its tests, builds the image and runs Trivy on it, and runs Checkov on the Terraform. Only if every gate passes does the job exchange its GitHub OIDC token for short-lived AWS credentials. On `main`, it pushes the image to ECR, applies Terraform for the target environment, registers a new ECS task definition that points at the new image, and waits for the service to become stable behind the ALB. Inside AWS, only the ALB sits in public subnets; the Fargate tasks and the RDS database live in private subnets, the tasks read the database password from Secrets Manager at start-up, and logs and metrics go to CloudWatch, where alarms notify an SNS email topic. Locally, the same API runs under Docker Compose next to Prometheus and Grafana, so dashboards and alert rules can be built without paying for AWS.
 
 ## How it works
 
@@ -76,7 +76,7 @@ The VPC spans two availability zones. Public subnets hold the ALB and the NAT ga
 
 ### Compute: ECS Fargate behind an ALB
 
-Ironbank runs as an ECS service on Fargate with `awsvpc` networking, registered in an ALB target group of type `ip`. The ALB health check calls the API's health endpoint, and ECS replaces any task that fails it. Fargate was chosen over EKS because one stateless API does not need a Kubernetes control plane, and every part of it (task definition, service, target group) can be explained line by line. Terraform creates the service but ignores changes to its `task_definition`, because the pipeline owns image rollouts; otherwise every `terraform apply` would undo the last deploy.
+IronPay runs as an ECS service on Fargate with `awsvpc` networking, registered in an ALB target group of type `ip`. The ALB health check calls the API's health endpoint, and ECS replaces any task that fails it. Fargate was chosen over EKS because one stateless API does not need a Kubernetes control plane, and every part of it (task definition, service, target group) can be explained line by line. Terraform creates the service but ignores changes to its `task_definition`, because the pipeline owns image rollouts; otherwise every `terraform apply` would undo the last deploy.
 
 ### Database and secrets
 
@@ -84,19 +84,19 @@ RDS PostgreSQL runs in private subnets with storage encryption and automated bac
 
 ### IAM and OIDC
 
-There are four roles, each scoped to what it touches: the ECS task execution role (pull from this ECR repo, write to this log group, read this secret), the ECS task role (whatever Ironbank itself needs, empty by default), a CI plan role (read-only, used on pull requests), and a CI deploy role (push to ECR, register task definitions, update the service, apply Terraform). The CI roles trust GitHub's OIDC provider, and the trust policy checks the token's `aud` and `sub` claims, so only this repository's `main` branch or its `prod` environment can assume the deploy role. Tokens last for the job and nothing long-lived is stored in GitHub secrets.
+There are four roles, each scoped to what it touches: the ECS task execution role (pull from this ECR repo, write to this log group, read this secret), the ECS task role (whatever IronPay itself needs, empty by default), a CI plan role (read-only, used on pull requests), and a CI deploy role (push to ECR, register task definitions, update the service, apply Terraform). The CI roles trust GitHub's OIDC provider, and the trust policy checks the token's `aud` and `sub` claims, so only this repository's `main` branch or its `prod` environment can assume the deploy role. Tokens last for the job and nothing long-lived is stored in GitHub secrets.
 
 ### Pipeline and security gates
 
-Pull requests run `terraform fmt -check`, `terraform validate`, `tflint`, Ironbank's tests, a Docker build, Trivy and Checkov, and post the `terraform plan` output to the run summary. Trivy fails the build on CRITICAL or HIGH vulnerabilities that have a fix available; Checkov fails on any failed policy. Accepted exceptions live in `.trivyignore` and inline `checkov:skip` comments, each with a reason, so suppressions are reviewed like code. Merges to `main` repeat the gates, push the image to ECR with an immutable SHA tag, deploy to dev, run a smoke test through the ALB, and then wait for approval on the `prod` GitHub environment before deploying the same image to prod.
+Pull requests run `terraform fmt -check`, `terraform validate`, `tflint`, IronPay's tests, a Docker build, Trivy and Checkov, and post the `terraform plan` output to the run summary. Trivy fails the build on CRITICAL or HIGH vulnerabilities that have a fix available; Checkov fails on any failed policy. Accepted exceptions live in `.trivyignore` and inline `checkov:skip` comments, each with a reason, so suppressions are reviewed like code. Merges to `main` repeat the gates, push the image to ECR with an immutable SHA tag, deploy to dev, run a smoke test through the ALB, and then wait for approval on the `prod` GitHub environment before deploying the same image to prod.
 
 ### Monitoring
 
-In AWS, containers log to a CloudWatch log group with a set retention period, and CloudWatch alarms watch ALB 5xx count, target response time, unhealthy host count, ECS CPU and memory, and RDS CPU and free storage; alarms publish to an SNS topic that emails the owner. Locally, `docker compose up` starts Ironbank, Postgres, Prometheus and Grafana; Prometheus scrapes the API's metrics endpoint and Grafana loads a provisioned dashboard for request rate, error rate and latency (the RED method) plus one alert rule on error rate. Keeping Prometheus and Grafana local avoids paying for an always-on monitoring stack in AWS.
+In AWS, containers log to a CloudWatch log group with a set retention period, and CloudWatch alarms watch ALB 5xx count, target response time, unhealthy host count, ECS CPU and memory, and RDS CPU and free storage; alarms publish to an SNS topic that emails the owner. Locally, `docker compose up` starts IronPay, Postgres, Prometheus and Grafana; Prometheus scrapes the API's metrics endpoint and Grafana loads a provisioned dashboard for request rate, error rate and latency (the RED method) plus one alert rule on error rate. Keeping Prometheus and Grafana local avoids paying for an always-on monitoring stack in AWS.
 
 ### Rollback
 
-Every deploy creates a new task definition revision and leaves the old one in place. `make rollback ENV=dev` looks up the revision before the current one, updates the service to use it, waits for the service to stabilize and reruns the smoke test. The ECS deployment circuit breaker is also on, so a deploy whose tasks never pass health checks rolls back on its own. Database changes are not rolled back by this; Ironbank migrations must stay backward compatible for one release so the previous image still works against the new schema.
+Every deploy creates a new task definition revision and leaves the old one in place. `make rollback ENV=dev` looks up the revision before the current one, updates the service to use it, waits for the service to stabilize and reruns the smoke test. The ECS deployment circuit breaker is also on, so a deploy whose tasks never pass health checks rolls back on its own. Database changes are not rolled back by this; IronPay migrations must stay backward compatible for one release so the previous image still works against the new schema.
 
 ### Cost control
 
@@ -125,7 +125,7 @@ Real cost numbers come only from the AWS Pricing Calculator or Cost Explorer and
 | Network | VPC, public and private subnets, NAT gateway, security groups | Keeps the database and tasks off the public internet |
 | Compute | ECS Fargate | Runs containers without managing servers or a Kubernetes control plane |
 | Load balancing | Application Load Balancer | Health checks, HTTP routing, rolling deploys without downtime |
-| Database | RDS PostgreSQL | Managed backups and patching for the database Ironbank already uses |
+| Database | RDS PostgreSQL | Managed backups and patching for the database IronPay already uses |
 | Registry | ECR | Private image registry in the same account, with immutable tags and scan on push |
 | Secrets | Secrets Manager | Database password generated and stored by AWS, injected at task start |
 | Identity | IAM, GitHub OIDC provider | Least-privilege roles and short-lived CI credentials |
@@ -138,7 +138,7 @@ Real cost numbers come only from the AWS Pricing Calculator or Cost Explorer and
 ## Project structure
 
 ```
-endurance-aws-devops/
+cloudship-devops/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml              # PR: lint, test, build, Trivy, Checkov, terraform plan
@@ -171,8 +171,8 @@ endurance-aws-devops/
 │   ├── cost.md                 # free-tier and paid resources, how to keep the bill small
 │   ├── results/                # raw measurement output
 │   └── screenshots/
-├── docker-compose.yml          # local Ironbank, Postgres, Prometheus, Grafana
-├── ironbank.ref                # pinned Ironbank commit SHA to build and deploy
+├── docker-compose.yml          # local IronPay, Postgres, Prometheus, Grafana
+├── ironpay.ref                # pinned IronPay commit SHA to build and deploy
 ├── Makefile
 ├── .env.example
 ├── .pre-commit-config.yaml
@@ -198,10 +198,10 @@ This is the target workflow once Phase 1 lands. AWS steps arrive in Phases 2 and
 **Run locally**
 
 ```bash
-git clone https://github.com/striderzz/endurance-aws-devops.git
-cd endurance-aws-devops
+git clone https://github.com/striderzz/cloudship-devops.git
+cd cloudship-devops
 cp .env.example .env          # local Postgres and Grafana passwords, AWS region, alert email
-make up                       # Ironbank + Postgres via docker compose (Prometheus and Grafana join in Phase 5)
+make up                       # IronPay + Postgres via docker compose (Prometheus and Grafana join in Phase 5)
 ```
 
 From Phase 5, Grafana is at `http://localhost:3000` and Prometheus at `http://localhost:9090`. Stop with `make down`.
@@ -209,7 +209,7 @@ From Phase 5, Grafana is at `http://localhost:3000` and Prometheus at `http://lo
 **Lint, test and scan**
 
 ```bash
-make test                     # Ironbank tests, terraform fmt/validate, tflint
+make test                     # IronPay tests, terraform fmt/validate, tflint
 make scan                     # Trivy on the local image, Checkov on terraform/
 ```
 
@@ -249,15 +249,15 @@ All values are placeholders until measured from real runs in this repo.
 
 ## Stretch goals
 
-- Local Kubernetes with k3d, a Helm chart for Ironbank, and Argo CD syncing from a `gitops/` folder
+- Local Kubernetes with k3d, a Helm chart for IronPay, and Argo CD syncing from a `gitops/` folder
 - Blue/green deploys on ECS with CodeDeploy and automatic rollback on alarm
 - An AI pull-request reviewer: a GitHub Action sends the `terraform plan` and scanner output to Claude (`claude-haiku-5-5`) and posts one structured risk comment, with token and cost logging and a monthly budget cap
 - Infracost cost diff on every pull request that changes Terraform
 
 ## Related projects
 
-- [Ironbank – Payments Ledger](https://github.com/striderzz/ironbank-payments-ledger): the API this project builds and deploys
-- [Jarvis – Incident Agents](https://github.com/striderzz/jarvis-incident-agents): agents that investigate incidents in Ironbank, using the logs, metrics and alarms set up here
+- [IronPay LedgerAPI](https://github.com/striderzz/ironpay-ledgerapi): the API this project builds and deploys
+- [IncidentIQ AgentOps](https://github.com/striderzz/incidentiq-agentops): agents that investigate incidents in IronPay, using the logs, metrics and alarms set up here
 
 ## Author
 
