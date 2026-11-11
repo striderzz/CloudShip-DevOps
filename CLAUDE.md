@@ -4,7 +4,7 @@ This file tells Claude (Claude Code) how to build this project. Read **README.md
 
 ## Goal
 
-Deploy the IronPay payments API (`striderzz/ironpay-ledgerapi`, pinned by commit SHA in `ironpay.ref`) to AWS with infrastructure as code and a secure pipeline:
+Deploy the IronPay payments API (`striderzz/IronPay-LedgerAPI`, pinned by commit SHA in `ironpay.ref`) to AWS with infrastructure as code and a secure pipeline:
 
 - Terraform modules with remote state (S3 + DynamoDB lock): VPC with public/private subnets, ALB, ECS Fargate service, RDS PostgreSQL, ECR, Secrets Manager, CloudWatch logs and alarms, least-privilege IAM
 - Environments dev and prod from one root module via `dev.tfvars` / `prod.tfvars` and separate state keys

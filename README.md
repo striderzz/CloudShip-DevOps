@@ -10,7 +10,7 @@ Status: in development — design spec and build plan; results land as each phas
 
 ## Why this exists
 
-Most portfolio deployments stop at "it runs on my laptop" or a console-clicked EC2 instance with an access key pasted into CI. That skips the parts a platform team actually owns: a network that keeps the database off the internet, infrastructure that can be rebuilt from code, a pipeline that refuses to ship a vulnerable image, credentials that expire on their own, alarms that fire before users notice, a rollback that takes one command, and a bill that goes to zero when the demo is over. CloudShip takes a real service, the [IronPay payments API](https://github.com/striderzz/ironpay-ledgerapi), and deploys it that way.
+Most portfolio deployments stop at "it runs on my laptop" or a console-clicked EC2 instance with an access key pasted into CI. That skips the parts a platform team actually owns: a network that keeps the database off the internet, infrastructure that can be rebuilt from code, a pipeline that refuses to ship a vulnerable image, credentials that expire on their own, alarms that fire before users notice, a rollback that takes one command, and a bill that goes to zero when the demo is over. CloudShip takes a real service, the [IronPay payments API](https://github.com/striderzz/IronPay-LedgerAPI), and deploys it that way.
 
 ## What it does
 
@@ -138,7 +138,7 @@ Real cost numbers come only from the AWS Pricing Calculator or Cost Explorer and
 ## Project structure
 
 ```
-cloudship-devops/
+CloudShip-DevOps/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml              # PR: lint, test, build, Trivy, Checkov, terraform plan
@@ -198,8 +198,8 @@ This is the target workflow once Phase 1 lands. AWS steps arrive in Phases 2 and
 **Run locally**
 
 ```bash
-git clone https://github.com/striderzz/cloudship-devops.git
-cd cloudship-devops
+git clone https://github.com/striderzz/CloudShip-DevOps.git
+cd CloudShip-DevOps
 cp .env.example .env          # local Postgres and Grafana passwords, AWS region, alert email
 make up                       # IronPay + Postgres via docker compose (Prometheus and Grafana join in Phase 5)
 ```
@@ -256,8 +256,8 @@ All values are placeholders until measured from real runs in this repo.
 
 ## Related projects
 
-- [IronPay LedgerAPI](https://github.com/striderzz/ironpay-ledgerapi): the API this project builds and deploys
-- [IncidentIQ AgentOps](https://github.com/striderzz/incidentiq-agentops): agents that investigate incidents in IronPay, using the logs, metrics and alarms set up here
+- [IronPay LedgerAPI](https://github.com/striderzz/IronPay-LedgerAPI): the API this project builds and deploys
+- [IncidentIQ AgentOps](https://github.com/striderzz/IncidentIQ-AgentOps): agents that investigate incidents in IronPay, using the logs, metrics and alarms set up here
 
 ## Author
 
